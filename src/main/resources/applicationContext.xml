@@ -1,0 +1,1 @@
+<bean id="id1" class="org.springframework.test.Pet" scope="singleton"></bean>
