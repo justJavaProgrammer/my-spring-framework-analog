@@ -3,29 +3,24 @@ package org.springframework.beans.factory.support;
 import lombok.SneakyThrows;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.finder.Finder;
-import org.springframework.core.type.parsers.BeanXmlParser;
-import org.springframework.core.type.parsers.Parser;
-import org.springframework.util.MultiValueMap;
+import org.springframework.core.type.classreading.DefaultDocumentReader;
+
 
 public class XmlListableBeanFactory extends DefaultListableBeanFactory {
 
-    private final Parser  parser;
 
     public XmlListableBeanFactory(String s, Finder finder) {
-        super(finder);
-        this.parser = new BeanXmlParser(s);
+        super(finder, new DefaultDocumentReader(s));
     }
+
     @SneakyThrows
     @Override
     public <T> T createBean(Class<T> requireType) throws BeansException, IllegalAccessException, InstantiationException {
-        final MultiValueMap<String, String> parse = parser.parse("");
-        T impl;
-        Class<?> c = Class.forName(parse.getFirst("class"));
-        if(c.isInterface()) {
-            final T o = (T) finder.find(c);
-            return (T) o.getClass().newInstance();
+        Class<?> t = requireType;
+        if (t.isInterface()) {
+            final T c = finder.find(requireType);
+            final T o = (T) c.getClass().newInstance();
         }
-
-        return (T) c.newInstance();
+        return (T) t.newInstance();
     }
 }

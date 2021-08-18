@@ -1,1 +1,5 @@
-<bean id="id1" class="org.springframework.test.Pet" scope="singleton"></bean>
+<beans>
+    <bean id="id2" class="org.springframework.test.Cat" scope="singleton"></bean>
+    <bean id="id1" class="org.springframework.test.Dog" scope="singleton"></bean>
+<!--    <bean id="id3" class="org.springframework.test.Cow" ></bean>-->
+</beans>

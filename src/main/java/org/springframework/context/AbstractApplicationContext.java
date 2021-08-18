@@ -1,5 +1,6 @@
 package org.springframework.context;
 
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -57,8 +58,18 @@ public abstract class AbstractApplicationContext implements ApplicationContext {
     }
 
     @Override
+    public void registerBeanDefinition(String beanName, BeanDefinition definition) {
+        this.getBeanFactory().registerBeanDefinition(beanName, definition);
+    }
+
+    @Override
     public boolean containsBeanDefinition(String name) {
         return this.getBeanFactory().containsLocalBean(name);
+    }
+
+    @Override
+    public void removeBeanDefinition(String beanName) {
+        this.getBeanFactory().removeBeanDefinition(beanName);
     }
 
     @Override
@@ -73,12 +84,22 @@ public abstract class AbstractApplicationContext implements ApplicationContext {
 
     @Override
     public String[] getBeanDefinitionNames() {
-        return this.getBeanDefinitionNames();
+        return this.getBeanFactory().getBeanDefinitionNames();
     }
 
     @Override
     public String[] getBeanNamesForAnnotation(Class<? extends Annotation> annotation) {
         return this.getBeanFactory().getBeanNamesForAnnotation(annotation);
+    }
+
+    @Override
+    public <T> T createBean(Class<T> beanClass) throws BeansException, IllegalAccessException, InstantiationException {
+        return this.getBeanFactory().createBean(beanClass);
+    }
+
+    @Override
+    public BeanDefinition getBeanDefinition(String beanName) {
+        return this.getBeanFactory().getBeanDefinition(beanName);
     }
 
     @Override

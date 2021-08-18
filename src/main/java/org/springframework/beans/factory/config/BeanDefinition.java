@@ -13,5 +13,12 @@ public interface BeanDefinition extends Cloneable {
 
     void setLazyInit(boolean lazyInit);
 
+    void setBeanClassName(String className);
+
+    String getBeanClassName();
+
+    void setBeanDefinitionName(String beanDefinitionName);
+
+    String getBeanDefinitionName();
 
 }

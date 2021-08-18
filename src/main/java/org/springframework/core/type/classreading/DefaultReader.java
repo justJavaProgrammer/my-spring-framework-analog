@@ -7,6 +7,7 @@ public class DefaultReader implements MetadataReader {
 
     @Override
     public ClassMetadata getClassMetadata() {
+
         return null;
     }
 

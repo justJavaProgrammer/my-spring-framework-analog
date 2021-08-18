@@ -105,4 +105,13 @@ public class MultiValueMapAdapter<K, V> implements MultiValueMap<K, V> {
     public Set<Entry<K, List<V>>> entrySet() {
         return this.targetMap.entrySet();
     }
+
+    @Override
+    public String toString() {
+        return "MultiValueMapAdapter{" +
+                "targetMap =" + targetMap +
+                "size= " + targetMap.size() +
+                "values= " + targetMap.values() +
+                '}';
+    }
 }

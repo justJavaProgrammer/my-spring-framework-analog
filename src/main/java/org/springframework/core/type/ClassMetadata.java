@@ -3,7 +3,7 @@ package org.springframework.core.type;
 public interface ClassMetadata {
 
     String getClassName();
-
+    // return all implemented interfaces
     String[] getInterfaceNames();
 
     String[] getMemberClassNames();

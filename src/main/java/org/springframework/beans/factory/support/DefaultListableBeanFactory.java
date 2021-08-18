@@ -6,63 +6,66 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.finder.Finder;
+import org.springframework.core.type.classreading.DefaultDocumentReader;
 
 import java.lang.annotation.Annotation;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class DefaultListableBeanFactory implements ConfigurableListableBeanFactory {
+    protected Map<String, BeanDefinition> definitions;
     protected Map<String, Object> objects;
     protected Finder finder;
+    protected DefaultDocumentReader reader;
 
-    public DefaultListableBeanFactory(Finder finder) {
+    public DefaultListableBeanFactory(Finder finder, DefaultDocumentReader reader) {
         this.finder = finder;
-        this.objects = new HashMap<>();
+        this.reader = reader;
+        init();
     }
 
-    public DefaultListableBeanFactory() {
-        this.objects = new HashMap<>();
+    private void init() {
+        this.definitions = createBeanDefinitions();
+        for (Map.Entry<String, BeanDefinition> stringBeanDefinitionEntry : definitions.entrySet()) {
+            this.objects = createObjectFromBeanDefinition(stringBeanDefinitionEntry.getValue());
+        }
     }
+
 
     @Override
     public boolean containsBean(String beanName) {
-        return objects.containsKey(beanName);
+        return this.definitions.containsKey(beanName);
     }
 
     @SneakyThrows
     @Override
     public <T> T getBean(Class<T> requiredType) {
-        final String simpleName = requiredType.getSimpleName();
-        String beanName = getBeanName(simpleName);
-        return getBean(simpleName, requiredType);
+        //todo
+        return null;
     }
 
     @SneakyThrows
     @Override
     public <T> T getBean(String name, Class<T> requiredType) {
-        final T bean = createBean(requiredType);
-        this.objects.put(name, bean);
-        return bean;
+        System.out.println(requiredType);
+        return (T) this.objects.get(name);
     }
 
     @SneakyThrows
     @Override
     public Object getBean(String name) {
-
-        final Object o = objects.get(name);
-        if (o != null)
-            return o;
-        throw new BeansException("No beans found with this name");
+        return this.objects.get(name);
     }
 
     @Override
     public boolean isSingleton(String name) {
-        return false;
+        return this.definitions.get(name).isSingleton();
     }
 
     @Override
     public boolean isPrototype(String name) {
-        return false;
+        return this.definitions.get(name).isPrototype();
     }
 
     @Override
@@ -77,7 +80,7 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
 
     @Override
     public boolean containsBeanDefinition(String name) {
-        return false;
+        return this.definitions.containsKey(name);
     }
 
     @Override
@@ -87,12 +90,27 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
 
     @Override
     public int getBeanDefinitionCount() {
-        return 0;
+        return this.definitions.size();
     }
 
     @Override
     public String[] getBeanDefinitionNames() {
-        return new String[0];
+        final Set<String> keys = this.definitions.keySet();
+        String[] s = new String[keys.size()];
+        return keys.toArray(s);
+    }
+
+    @SneakyThrows
+    @Override
+    public void registerBeanDefinition(String beanName, BeanDefinition definition) {
+        this.definitions.put(beanName, null);
+
+        //  throw new BeanAlreadyExistException("Bean with name: " + beanName + " already exist");
+    }
+
+    @Override
+    public void removeBeanDefinition(String beanName) {
+        this.definitions.remove(beanName);
     }
 
     @Override
@@ -102,13 +120,11 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
 
     @Override
     public BeanDefinition getBeanDefinition(String beanName) {
-        return null;
+        return this.definitions.get(beanName);
     }
 
-    private String getBeanName(String beanName) {
-        return beanName.substring(0, 1).toLowerCase() + beanName.substring(1);
-    }
 
+    @Override
     @SneakyThrows
     public <T> T createBean(Class<T> requireType) throws BeansException, IllegalAccessException, InstantiationException {
         Class<?> t = requireType;
@@ -117,5 +133,21 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
             t = (Class<?>) c;
         }
         return (T) t.newInstance();
+    }
+
+    @SneakyThrows
+    public <T> ConcurrentHashMap<String, Object> createObjectFromBeanDefinition(BeanDefinition definition) {
+        ConcurrentHashMap<String, Object> objects = new ConcurrentHashMap<>();
+        String name = definition.getBeanClassName();
+        if (definition.isSingleton() && !containsBeanDefinition(definition.getBeanDefinitionName())) {
+            T c = (T) Class.forName(name).newInstance();
+            objects.put(name, c);
+        }
+        return objects;
+    }
+
+    public ConcurrentHashMap<String, BeanDefinition> createBeanDefinitions() {
+        ConcurrentHashMap<String, BeanDefinition> definitions = this.reader.getCreatedBeanDefinitions(this);
+        return definitions;
     }
 }

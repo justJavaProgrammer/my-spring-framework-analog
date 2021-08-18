@@ -2,6 +2,9 @@ package org.springframework.core.type;
 
 public class MethodMetaData implements AnnotationMetaData {
 
+    private String className;
+
+
 
     @Override
     public String getClassName() {
