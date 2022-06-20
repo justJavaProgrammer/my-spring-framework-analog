@@ -1,5 +1,5 @@
 # my-spring-framework-analog
-Simple realization of Spring core. Supports xml config. 
+Simple realization of Spring core. Supports xml and annotation(using Component annotation)  config
 <body>
 <div>
 <beans>
