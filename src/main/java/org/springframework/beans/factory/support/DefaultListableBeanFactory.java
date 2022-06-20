@@ -1,35 +1,53 @@
 package org.springframework.beans.factory.support;
 
 import lombok.SneakyThrows;
+import org.springframework.annotations.PostConstruct;
+import org.springframework.beans.BeanCreationException;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.finder.Finder;
-import org.springframework.core.type.classreading.DefaultDocumentReader;
+import org.springframework.beans.factory.finder.Scanner;
+import org.springframework.beans.factory.stereotype.Autowired;
+import org.springframework.beans.factory.stereotype.Component;
+import org.springframework.core.type.classreading.DocumentReader;
+import org.springframework.util.ReflectionUtils;
 
 import java.lang.annotation.Annotation;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.lang.reflect.*;
+import java.util.*;
 
-public class DefaultListableBeanFactory implements ConfigurableListableBeanFactory {
-    protected Map<String, BeanDefinition> definitions;
-    protected Map<String, Object> objects;
-    protected Finder finder;
-    protected DefaultDocumentReader reader;
+public class DefaultListableBeanFactory implements ConfigurableListableBeanFactory, BeanDefinitionRegistry {
+    protected final Scanner scanner;
+    protected final Map<String, BeanDefinition> definitions;
+    protected final Map<String, Object> objects;
+    protected final List<BeanPostProcessor> beanPostProcessors;
+    protected final Finder finder;
+    protected final DocumentReader reader;
 
-    public DefaultListableBeanFactory(Finder finder, DefaultDocumentReader reader) {
+    public DefaultListableBeanFactory(Finder finder, DocumentReader reader, Scanner scanner) {
         this.finder = finder;
         this.reader = reader;
+        this.objects = new HashMap<>();
+        this.definitions = new HashMap<>();
+        this.scanner = scanner;
+        this.beanPostProcessors = new ArrayList<>();
         init();
     }
 
+    @SneakyThrows
     private void init() {
-        this.definitions = createBeanDefinitions();
-        for (Map.Entry<String, BeanDefinition> stringBeanDefinitionEntry : definitions.entrySet()) {
-            this.objects = createObjectFromBeanDefinition(stringBeanDefinitionEntry.getValue());
+        initBeanDefinition();
+        Set<Class<?>> classes = scanner.scanClassesAnnotatedWith(Component.class);
+        for (Class<?> c : classes) {
+            if (BeanPostProcessor.class.isAssignableFrom(c)) {
+                Object bpp = createObjectWithConstructor(c);
+                this.beanPostProcessors.add((BeanPostProcessor) bpp);
+            }
         }
+        initBeanCreation();
     }
 
 
@@ -41,15 +59,22 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
     @SneakyThrows
     @Override
     public <T> T getBean(Class<T> requiredType) {
-        //todo
-        return null;
+        BeanDefinition beanDefinition = BeanDefinitionUtils.getBeanDefinition(definitions, requiredType);
+        if (beanDefinition == null) {
+            return null;
+        }
+        String beanName = beanDefinition.getBeanDefinitionName();
+
+        Object o = this.objects.get(beanName);
+        return requiredType.cast(o);
     }
 
     @SneakyThrows
     @Override
     public <T> T getBean(String name, Class<T> requiredType) {
         System.out.println(requiredType);
-        return (T) this.objects.get(name);
+        Object o = this.objects.get(name);
+        return requiredType.cast(o);
     }
 
     @SneakyThrows
@@ -103,9 +128,7 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
     @SneakyThrows
     @Override
     public void registerBeanDefinition(String beanName, BeanDefinition definition) {
-        this.definitions.put(beanName, null);
-
-        //  throw new BeanAlreadyExistException("Bean with name: " + beanName + " already exist");
+        this.definitions.put(beanName, definition);
     }
 
     @Override
@@ -127,27 +150,65 @@ public class DefaultListableBeanFactory implements ConfigurableListableBeanFacto
     @Override
     @SneakyThrows
     public <T> T createBean(Class<T> requireType) throws BeansException, IllegalAccessException, InstantiationException {
+        BeanDefinition beanDefinition = BeanDefinitionUtils.getBeanDefinition(this.definitions, requireType);
+        if (beanDefinition == null) {
+            throw new BeanCreationException(String.format("Cannot find bean definition for class: %s. Add bean to your configuration", requireType.getName()));
+        }
+
         Class<?> t = requireType;
         if (t.isInterface()) {
             final T c = finder.find(requireType);
             t = (Class<?>) c;
         }
-        return (T) t.newInstance();
+        Object bean = createObjectWithConstructor(t);
+        String beanDefinitionName = beanDefinition.getBeanDefinitionName();
+        for (BeanPostProcessor bpp : this.beanPostProcessors) {
+            bpp.beforeInitialization(beanDefinitionName, bean, this);
+        }
+        Method postConstruct = ReflectionUtils.getMethodAnnotatedWith(bean, PostConstruct.class);
+        if(postConstruct != null) {
+            postConstruct.invoke(bean);
+        }
+        return requireType.cast(bean);
+    }
+
+    protected void initBeanDefinition() {
+        this.reader.registerBeanDefinitions(this);
+    }
+
+    protected void initBeanCreation() throws BeanCreationException {
+        for (Map.Entry<String, BeanDefinition> entry : this.definitions.entrySet()) {
+            BeanDefinition definition = entry.getValue();
+            try {
+                Class<?> c = Class.forName(definition.getBeanClassName());
+                Object bean = createBean(c);
+                this.objects.put(definition.getBeanDefinitionName(), bean);
+            } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | BeansException e) {
+                throw new BeanCreationException(String.format("Cannot find class with package: %s", definition.getBeanClassName()));
+            }
+        }
     }
 
     @SneakyThrows
-    public <T> ConcurrentHashMap<String, Object> createObjectFromBeanDefinition(BeanDefinition definition) {
-        ConcurrentHashMap<String, Object> objects = new ConcurrentHashMap<>();
-        String name = definition.getBeanClassName();
-        if (definition.isSingleton() && !containsBeanDefinition(definition.getBeanDefinitionName())) {
-            T c = (T) Class.forName(name).newInstance();
-            objects.put(name, c);
+    protected Object createObjectWithConstructor(Class<?> c) {
+        for (Constructor<?> constructor : c.getConstructors()) {
+            if (constructor.isAnnotationPresent(Autowired.class) || constructor.getParameterCount() == 0) {
+                Parameter[] parameters = constructor.getParameters();
+                Class<?>[] params = new Class<?>[parameters.length];
+                Object[] paramsValues = new Object[parameters.length];
+                for (int i = 0; i < parameters.length; i++) {
+                    Parameter parameter = parameters[i];
+                    Class<?> type = parameter.getType();
+                    Object bean = this.getBean(type);
+                    if(bean == null)
+                        throw new BeanCreationException(String.format("Bean: %s required bean: %s that not found. Add bean to your context and re-run application",
+                                c.getName(), type.getSimpleName()));
+                    paramsValues[i] = bean;
+                    params[i] = type;
+                }
+                return c.getDeclaredConstructor(params).newInstance(paramsValues);
+            }
         }
-        return objects;
-    }
-
-    public ConcurrentHashMap<String, BeanDefinition> createBeanDefinitions() {
-        ConcurrentHashMap<String, BeanDefinition> definitions = this.reader.getCreatedBeanDefinitions(this);
-        return definitions;
+        throw new BeansException("Constructor with @Autowired annotation not found. Add @Autowired to your constructor or create default constructor with no parameters to fix this error");
     }
 }
